@@ -1,4 +1,4 @@
-
+﻿
 import {
   Body,
   Controller,
@@ -29,7 +29,7 @@ const REFRESH_COOKIE_NAME = 'gym_refresh_token';
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
+  sameSite: process.env.NODE_ENV === 'production' ? ('none' as const) : ('lax' as const),
   path: '/api/auth',
   maxAge: 7 * 24 * 60 * 60 * 1000,
 };
@@ -114,7 +114,7 @@ export class AuthController {
     response.clearCookie(REFRESH_COOKIE_NAME, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       path: '/api/auth',
     });
 
