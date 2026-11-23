@@ -1,0 +1,782 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum MembershipStatus {
+  PENDING
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  SUSPENDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  REFUNDED
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+}
+
+enum ScheduleChangeRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum BookingStatus {
+  BOOKED
+  WAITLISTED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+enum CheckInMethod {
+  MANUAL
+  QR_CODE
+  BARCODE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+enum WorkoutPlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum EnquiryType {
+  GENERAL
+  MEMBERSHIP
+  TRIAL
+  OTHER
+}
+
+enum EnquiryStatus {
+  NEW
+  CONTACTED
+  CONVERTED
+  CLOSED
+}
+
+enum NotificationType {
+  MEMBERSHIP
+  PAYMENT
+  BOOKING
+  WORKOUT
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+enum ContentStatus {
+  DRAFT
+  PUBLISHED
+}
+
+// ==========================================
+// AUTHENTICATION & AUTHORIZATION
+// ==========================================
+
+model User {
+  id                 String     @id @default(uuid()) @db.Uuid
+  firstName          String
+  lastName           String
+  email              String     @unique
+  passwordHash       String
+  phone              String?
+  avatarUrl          String?
+  status             UserStatus @default(ACTIVE)
+  emailVerifiedAt    DateTime?
+  mustChangePassword Boolean    @default(false)
+  lastLoginAt        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  userRoles      UserRole[]
+  memberProfile  MemberProfile?
+  trainerProfile TrainerProfile?
+
+  assignedRoles UserRole[] @relation("RoleAssignedBy")
+
+  verifiedPayments  Payment[] @relation("PaymentVerifier")
+  assignedEnquiries Enquiry[] @relation("EnquiryAssignee")
+
+  notifications Notification[]
+  auditLogs     AuditLog[]
+
+  recordedCheckIns  GymCheckIn[]      @relation("CheckInRecorder")
+  markedAttendances ClassAttendance[] @relation("AttendanceMarker")
+
+  createdContentPages ContentPage[]     @relation("ContentCreator")
+  updatedContentPages ContentPage[]     @relation("ContentUpdater")
+  updatedSettings     BusinessSetting[] @relation("SettingUpdater")
+
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  userId       String   @db.Uuid
+  roleId       String   @db.Uuid
+  assignedAt   DateTime @default(now())
+  assignedById String?  @db.Uuid
+
+  user       User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role  @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  assignedBy User? @relation("RoleAssignedBy", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@index([assignedById])
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+// ==========================================
+// MEMBER & TRAINER PROFILES
+// ==========================================
+
+model MemberProfile {
+  id                    String    @id @default(uuid()) @db.Uuid
+  userId                String    @unique @db.Uuid
+  memberNumber          String    @unique
+  dateOfBirth           DateTime? @db.Date
+  gender                Gender?
+  address               String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  fitnessGoals          String?
+  joinedAt              DateTime  @default(now())
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  memberships        Membership[]
+  payments           Payment[]
+  bookings           Booking[]
+  gymCheckIns        GymCheckIn[]
+  workoutPlans       WorkoutPlan[]
+  trainerAssignments TrainerMemberAssignment[] @relation("AssignedMember")
+  progressEntries    ProgressEntry[]
+  sessionNotes       SessionNote[]
+
+  @@index([joinedAt])
+}
+
+model TrainerProfile {
+  id               String            @id @default(uuid()) @db.Uuid
+  userId           String            @unique @db.Uuid
+  trainerNumber    String            @unique
+  specialization   String?
+  qualifications   String?
+  workoutTemplates WorkoutTemplate[]
+  experienceYears  Int?
+  bio              String?
+  isAvailable      Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  user                   User                      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  availability           TrainerAvailability[]
+  classSessions          ClassSession[]
+  scheduleChangeRequests ScheduleChangeRequest[]
+  sessionNotes           SessionNote[]
+  workoutPlans           WorkoutPlan[]
+  memberAssignments      TrainerMemberAssignment[] @relation("AssignedTrainer")
+  progressEntries        ProgressEntry[]
+
+  @@index([isAvailable])
+}
+
+model TrainerAvailability {
+  id          String    @id @default(uuid()) @db.Uuid
+  trainerId   String    @db.Uuid
+  dayOfWeek   DayOfWeek
+  startTime   String
+  endTime     String
+  isAvailable Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, dayOfWeek, startTime])
+  @@index([trainerId, dayOfWeek])
+}
+
+model TrainerMemberAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  trainerId  String    @db.Uuid
+  memberId   String    @db.Uuid
+  isActive   Boolean   @default(true)
+  assignedAt DateTime  @default(now())
+  endedAt    DateTime?
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  trainer TrainerProfile @relation("AssignedTrainer", fields: [trainerId], references: [id], onDelete: Restrict)
+  member  MemberProfile  @relation("AssignedMember", fields: [memberId], references: [id], onDelete: Restrict)
+
+  @@unique([trainerId, memberId])
+  @@index([trainerId, isActive])
+  @@index([memberId, isActive])
+}
+
+// ==========================================
+// MEMBERSHIP MANAGEMENT
+// ==========================================
+
+model MembershipPlan {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String   @unique
+  description  String?
+  price        Decimal  @db.Decimal(10, 2)
+  currency     String   @default("USD") @db.VarChar(3)
+  durationDays Int
+  features     Json?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships Membership[]
+
+  @@index([isActive])
+}
+
+model Membership {
+  id          String           @id @default(uuid()) @db.Uuid
+  memberId    String           @db.Uuid
+  planId      String           @db.Uuid
+  startDate   DateTime
+  endDate     DateTime
+  status      MembershipStatus @default(PENDING)
+  agreedPrice Decimal          @db.Decimal(10, 2)
+  currency    String           @default("USD") @db.VarChar(3)
+  activatedAt DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  member   MemberProfile  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  plan     MembershipPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  payments Payment[]
+
+  @@index([memberId, status])
+  @@index([planId])
+  @@index([endDate, status])
+}
+
+// ==========================================
+// PAYMENTS & INVOICES
+// ==========================================
+
+model Payment {
+  id              String        @id @default(uuid()) @db.Uuid
+  membershipId    String?       @db.Uuid
+  memberId        String        @db.Uuid
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("USD") @db.VarChar(3)
+  method          PaymentMethod
+  status          PaymentStatus @default(PENDING)
+  referenceNumber String?
+  paidAt          DateTime?
+  verifiedAt      DateTime?
+  verifiedById    String?       @db.Uuid
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  member     MemberProfile @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  membership Membership?   @relation(fields: [membershipId], references: [id], onDelete: Restrict)
+  verifiedBy User?         @relation("PaymentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  invoice    Invoice?
+
+  @@index([memberId, createdAt])
+  @@index([membershipId])
+  @@index([status, createdAt])
+  @@index([verifiedById])
+}
+
+model Invoice {
+  id            String   @id @default(uuid()) @db.Uuid
+  paymentId     String   @unique @db.Uuid
+  invoiceNumber String   @unique
+  issuedAt      DateTime @default(now())
+  subtotal      Decimal  @db.Decimal(10, 2)
+  taxAmount     Decimal  @default(0) @db.Decimal(10, 2)
+  totalAmount   Decimal  @db.Decimal(10, 2)
+  currency      String   @default("USD") @db.VarChar(3)
+  createdAt     DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+}
+
+// ==========================================
+// CLASSES, SESSIONS & BOOKINGS
+// ==========================================
+
+model GymClass {
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String
+  description     String?
+  category        String?
+  difficultyLevel DifficultyLevel?
+  defaultCapacity Int
+  durationMinutes Int
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  sessions ClassSession[]
+
+  @@index([isActive])
+}
+
+model ClassSession {
+  id        String        @id @default(uuid()) @db.Uuid
+  classId   String        @db.Uuid
+  trainerId String?       @db.Uuid
+  startAt   DateTime
+  endAt     DateTime
+  capacity  Int
+  status    SessionStatus @default(SCHEDULED)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  gymClass               GymClass                @relation(fields: [classId], references: [id], onDelete: Restrict)
+  trainer                TrainerProfile?         @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  bookings               Booking[]
+  scheduleChangeRequests ScheduleChangeRequest[]
+  sessionNotes           SessionNote[]
+
+  @@index([classId])
+  @@index([trainerId, startAt])
+  @@index([startAt, status])
+}
+
+model ScheduleChangeRequest {
+  id               String                      @id @default(uuid()) @db.Uuid
+  trainerId        String                      @db.Uuid
+  sessionId        String                      @db.Uuid
+  requestedStartAt DateTime
+  requestedEndAt   DateTime
+  reason           String
+  status           ScheduleChangeRequestStatus @default(PENDING)
+  adminNotes       String?
+  reviewedById     String?                     @db.Uuid
+  reviewedAt       DateTime?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Restrict)
+  session ClassSession   @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([trainerId, status])
+  @@index([sessionId])
+  @@index([status, createdAt])
+}
+
+model Booking {
+  id          String        @id @default(uuid()) @db.Uuid
+  sessionId   String        @db.Uuid
+  memberId    String        @db.Uuid
+  status      BookingStatus @default(BOOKED)
+  bookedAt    DateTime      @default(now())
+  cancelledAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  session    ClassSession     @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  member     MemberProfile    @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  attendance ClassAttendance?
+
+  @@unique([sessionId, memberId])
+  @@index([memberId, status])
+  @@index([sessionId, status])
+}
+
+// ==========================================
+// ATTENDANCE & GYM CHECK-INS
+// ==========================================
+
+model GymCheckIn {
+  id           String        @id @default(uuid()) @db.Uuid
+  memberId     String        @db.Uuid
+  checkedInAt  DateTime      @default(now())
+  checkedOutAt DateTime?
+  recordedById String?       @db.Uuid
+  method       CheckInMethod @default(MANUAL)
+  notes        String?
+  createdAt    DateTime      @default(now())
+
+  member     MemberProfile @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  recordedBy User?         @relation("CheckInRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([memberId, checkedInAt])
+  @@index([recordedById])
+}
+
+model ClassAttendance {
+  id         String           @id @default(uuid()) @db.Uuid
+  bookingId  String           @unique @db.Uuid
+  markedById String?          @db.Uuid
+  status     AttendanceStatus
+  markedAt   DateTime         @default(now())
+  notes      String?
+
+  booking  Booking @relation(fields: [bookingId], references: [id], onDelete: Restrict)
+  markedBy User?   @relation("AttendanceMarker", fields: [markedById], references: [id], onDelete: SetNull)
+
+  @@index([status, markedAt])
+}
+
+// ==========================================
+// WORKOUT PLANS & PROGRESS
+// ==========================================
+
+model WorkoutPlan {
+  id          String            @id @default(uuid()) @db.Uuid
+  memberId    String            @db.Uuid
+  trainerId   String            @db.Uuid
+  title       String
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      WorkoutPlanStatus @default(DRAFT)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  member  MemberProfile  @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Restrict)
+  items   WorkoutItem[]
+
+  @@index([memberId, status])
+  @@index([trainerId])
+}
+
+model WorkoutItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  workoutPlanId   String   @db.Uuid
+  exerciseName    String
+  description     String?
+  sets            Int?
+  reps            String?
+  durationSeconds Int?
+  restSeconds     Int?
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workoutPlan WorkoutPlan @relation(fields: [workoutPlanId], references: [id], onDelete: Cascade)
+
+  @@index([workoutPlanId, sortOrder])
+}
+
+model WorkoutTemplate {
+  id          String   @id @default(uuid()) @db.Uuid
+  trainerId   String   @db.Uuid
+  title       String
+  description String?
+  category    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  trainer TrainerProfile        @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  items   WorkoutTemplateItem[]
+
+  @@index([trainerId, title])
+}
+
+model WorkoutTemplateItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  templateId      String   @db.Uuid
+  exerciseName    String
+  description     String?
+  sets            Int?
+  reps            String?
+  durationSeconds Int?
+  restSeconds     Int?
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  template WorkoutTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, sortOrder])
+}
+
+model ProgressEntry {
+  id         String   @id @default(uuid()) @db.Uuid
+  memberId   String   @db.Uuid
+  trainerId  String?  @db.Uuid
+  metricName String
+  value      Decimal  @db.Decimal(10, 2)
+  unit       String
+  recordedAt DateTime @default(now())
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  member  MemberProfile   @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  trainer TrainerProfile? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+
+  @@index([memberId, recordedAt])
+  @@index([trainerId])
+}
+
+// ==========================================
+// ENQUIRIES & TRIAL REQUESTS
+// ==========================================
+
+model Enquiry {
+  id               String        @id @default(uuid()) @db.Uuid
+  fullName         String
+  email            String
+  phone            String?
+  subject          String?
+  message          String
+  type             EnquiryType   @default(GENERAL)
+  status           EnquiryStatus @default(NEW)
+  assignedToId     String?       @db.Uuid
+  preferredTrialAt DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  assignedTo User? @relation("EnquiryAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([email])
+  @@index([assignedToId])
+}
+
+// ==========================================
+// NOTIFICATIONS
+// ==========================================
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String              @db.Uuid
+  title     String
+  message   String
+  type      NotificationType
+  channel   NotificationChannel @default(IN_APP)
+  isRead    Boolean             @default(false)
+  readAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+}
+
+// ==========================================
+// AUDIT LOGS
+// ==========================================
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  oldValues  Json?
+  newValues  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+}
+
+// ==========================================
+// WEBSITE CMS & BUSINESS SETTINGS
+// ==========================================
+
+model ContentPage {
+  id          String        @id @default(uuid()) @db.Uuid
+  title       String
+  slug        String        @unique
+  content     Json
+  status      ContentStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdById String?       @db.Uuid
+  updatedById String?       @db.Uuid
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  createdBy User? @relation("ContentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy User? @relation("ContentUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@index([status, publishedAt])
+}
+
+model BusinessSetting {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  value       Json
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User? @relation("SettingUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+// ==========================================
+// AUTHENTICATION TOKENS
+// ==========================================
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model SessionNote {
+  id                String   @id @default(uuid()) @db.Uuid
+  trainerId         String   @db.Uuid
+  memberId          String   @db.Uuid
+  sessionId         String   @db.Uuid
+  note              String
+  isVisibleToMember Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  member  MemberProfile  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  session ClassSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([trainerId, createdAt])
+  @@index([memberId, createdAt])
+  @@index([sessionId])
+}
